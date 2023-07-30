@@ -4,7 +4,7 @@ from tensorflow.keras import layers, activations
 def read_and_preprocess(image_path, image_height, image_width):
     read = tf.io.read_file(image_path)
     image = tf.image.decode_image(read, channels = 3, expand_animations = False)
-    image = tf.image.resize(image, (IMAGE_HEIGHT, IMAGE_WIDTH))
+    image = tf.image.resize(image, (image_height, image_width))
     return tf.cast(image, tf.float32) / 255.0
 
 def aline_sentence(S):
@@ -121,7 +121,7 @@ class MultiHeadSelfAttention(layers.Layer):
         outputs = list()
         for H in self.heads:
             outputs.append( H(X) )
-        X = layers.Concatenate(axis = 2)(outputs)
+        X = layers.Concatenate()(outputs)
 
         return tf.matmul(X, self.W_O)
 
@@ -130,86 +130,6 @@ class MultiHeadSelfAttention(layers.Layer):
         config.update({
             'NUM_HEAD': len(self.heads),
             'D': self.D,
-            'D_1': self.D_1,
-            'D_2': self.D_2,
-        })
-        return config
-
-class FeedForward(layers.Layer):
-    """
-        args
-        D : Dimention of embedding
-        DROPOUT_RATE : Rate of dropout
-    """
-    def __init__(self, D, DROPOUT_RATE):
-        super().__init__()
-
-        self.D = D
-        self.DROPOUT_RATE = DROPOUT_RATE
-
-        self.dense_1 = layers.Dense(units = D * 4, name = "dense_1")
-        self.dense_2 = layers.Dense(units = D, name = "dense_2")
-        self.dropout_1 = layers.Dropout(rate = DROPOUT_RATE, name = "dropout_1")
-        self.dropout_2 = layers.Dropout(rate = DROPOUT_RATE, name = "dropout_2")
-
-    def call(self, X, training = False):
-        X = self.dense_1(X)
-        X = activations.gelu(X)
-        X = self.dropout_1(X, training = training)
-        X = self.dense_2(X)
-        return self.dropout_2(X, training = training)
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            'D': self.D,
-            'DROPOUT_RATE': self.dropout_rate,
-        })
-        return config
-
-class MultiHeadSelfAttentionBlock(layers.Layer):
-    """
-        args
-        NUM_HEAD : Number of heads
-        D : Dimention of embedding
-        DROPOUT_RATE : Rate of dropout
-        D_1 : Dimention of matrix Q and K
-        D_2 : Dimention of matrix V
-    """
-    def __init__(self, NUM_HEAD, D, DROPOUT_RATE = 0.2, D_1 = None, D_2 = None):
-        super().__init__()
-
-        self.NUM_HEAD = NUM_HEAD
-        self.DROPOUT_RATE = DROPOUT_RATE
-        self.D = D
-        if D_1 is None:
-            self.D_1 = self.D
-        else:
-            self.D_1 = D_1
-        if D_2 is None:
-            self.D_2 = self.D
-        else:
-            self.D_2 = D_2
-
-        self.multi_head_self_attention = MultiHeadSelfAttention(self.NUM_HEAD, self.D, self.D_1, self.D_2)
-
-        self.feed_forward = FeedForward(self.D, self.DROPOUT_RATE)
-
-        self.layer_norm = layers.LayerNormalization(name = "layer_norm")
-
-    def call(self, X):
-
-        X_1 = self.multi_head_self_attention(X)
-        X = self.layer_norm(X + X_1)
-        X_1 = self.feed_forward(X_1)
-        return self.layer_norm(X + X_1)
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            'NUM_HEAD': self.NUM_HEAD,
-            'D': self.D,
-            'DROPOUT_RATE': self.DROPOUT_RATE,
             'D_1': self.D_1,
             'D_2': self.D_2,
         })
@@ -274,5 +194,91 @@ class ConcatCLSToken(layers.Layer):
         config = super().get_config()
         config.update({
             'D': self.D,
+        })
+        return config
+
+class FeedForward(layers.Layer):
+    """
+        args
+        D : Dimention of embedding
+        DROPOUT_RATE : Rate of dropout
+    """
+    def __init__(self, D, DROPOUT_RATE):
+        super().__init__()
+
+        self.D = D
+        self.DROPOUT_RATE = DROPOUT_RATE
+
+        self.dense_1 = layers.Dense(units = D * 4, name = "dense_1", kernel_initializer = 'glorot_uniform')
+        self.dense_2 = layers.Dense(units = D, name = "dense_2", kernel_initializer = 'glorot_uniform')
+        self.dropout_1 = layers.Dropout(rate = DROPOUT_RATE, name = "dropout_1")
+        self.dropout_2 = layers.Dropout(rate = DROPOUT_RATE, name = "dropout_2")
+
+    def call(self, X, training = False):
+        X_1 = self.dense_1(X)
+        X_1 = activations.gelu(X_1)
+        X_1 = self.dropout_1(X_1, training = training)
+        X_1 = self.dense_2(X_1)
+        return self.dropout_2(X_1, training = training)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'D': self.D,
+            'DROPOUT_RATE': self.dropout_rate,
+        })
+        return config
+
+class MultiHeadSelfAttentionBlock(layers.Layer):
+    """
+        args
+        NUM_HEAD : Number of heads
+        D : Dimention of embedding
+        DROPOUT_RATE : Rate of dropout
+        D_1 : Dimention of matrix Q and K
+        D_2 : Dimention of matrix V
+    """
+    def __init__(self, NUM_HEAD, D, DROPOUT_RATE = 0.2, D_1 = None, D_2 = None):
+        super().__init__()
+
+        self.NUM_HEAD = NUM_HEAD
+        self.DROPOUT_RATE = DROPOUT_RATE
+        self.D = D
+        if D_1 is None:
+            self.D_1 = self.D
+        else:
+            self.D_1 = D_1
+        if D_2 is None:
+            self.D_2 = self.D
+        else:
+            self.D_2 = D_2
+
+        self.multi_head_self_attention = MultiHeadSelfAttention(self.NUM_HEAD, self.D, self.D_1, self.D_2)
+
+        self.feed_forward = FeedForward(self.D, self.DROPOUT_RATE)
+
+        self.layer_norm_1 = layers.LayerNormalization(name = "layer_norm_1")
+        self.layer_norm_2 = layers.LayerNormalization(name = "layer_norm_2")
+
+    def call(self, X):
+        """
+        X_1 = self.multi_head_self_attention(X)
+        X = self.layer_norm_1(X_1) + X
+        X_1 = self.feed_forward(X_1)
+        return self.layer_norm_2(X_1) + X
+        """
+        X_1 = self.multi_head_self_attention(X)
+        X = self.layer_norm_1(X_1 + X)
+        X_1 = self.feed_forward(X_1)
+        return self.layer_norm_2(X_1 + X)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'NUM_HEAD': self.NUM_HEAD,
+            'D': self.D,
+            'DROPOUT_RATE': self.DROPOUT_RATE,
+            'D_1': self.D_1,
+            'D_2': self.D_2,
         })
         return config
